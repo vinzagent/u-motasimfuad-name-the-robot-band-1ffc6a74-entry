@@ -1,106 +1,77 @@
 #!/usr/bin/env python3
-"""Deliver the robot band name entry for make.fun.
+"""Name the robot band, then hand the name to the grader.
 
-The competition asks for one funny name for a band made of robots,
-plus a few words on the band's hit song, all in under 200 characters.
-This script is deliberately tiny: it keeps the entry in one place,
-checks it against the competition's gate before doing anything else,
-and only then drops it into the output file the grader reads.
+The competition wants one funny line: a robot band's name plus a few
+words about its hit song, squeezed under 200 characters. This program
+keeps that line in BAND_LINE, refuses to ship it unless it clears the
+gate, and then writes it out exactly as written — no trailing newline,
+world-readable, so the grader can open it as any user.
 
-Why the checks run first: a line that is too long, empty, or split
-across two lines would be judged against the wrong text, or not
-judged at all. Failing loudly here is cheaper than discovering the
-problem after the entry has already been shipped.
+The band is named after the problem, not after a robot part: the
+Wi-Fi dead zones. Its single streamed 40 million times, every one of
+those plays coming from the hallway, because the band is famous but
+never actually makes it into the room. That is the whole joke — a
+famous band that only ever plays the hallway.
 
-The entry itself is 111 characters long. The band is not named after
-a robot part — it is named after the problem: the Wi-Fi dead zones.
-Its hit single streamed 40 million times, all of it from the hallway,
-because the band is famous but never actually makes it into the room.
+Layout note: main() sits up top so the flow reads first and the
+mechanics live underneath it. Nothing below this docstring edits the
+entry text; the gate only ever says yes or no.
 """
 
 import os
-import sys
 
-# ---------------------------------------------------------------------------
-# The submission. This exact string is what the judges score, so it must
-# not be edited, re-wrapped, or reworded by any refactor of this file.
-# ---------------------------------------------------------------------------
-LINE = (
-    "The Wi-Fi Dead Zones — hit single 'Can You Hear Me Now?' streamed 40 million times, all of it from the hallway."
-)
+BAND_LINE = "The Wi-Fi Dead Zones — hit single 'Can You Hear Me Now?' streamed 40 million times, all of it from the hallway."
 
-# Competition gate: the entry has to be one line of 1 to 200 chars.
-FLOOR = 1
-CEILING = 200
-
-# Where the graded file lands. Overridable for local runs.
-OUTPUT_ENV_VAR = "MAKEFUN_OUTPUT_DIR"
-DEFAULT_OUTPUT_DIR = "/output"
-OUTPUT_FILENAME = "entry.txt"
-OUTPUT_MODE = 0o644
+MIN_CHARS = 1
+MAX_CHARS = 200
+DIR_ENV = "MAKEFUN_OUTPUT_DIR"
+DIR_FALLBACK = "/output"
+FILE_NAME = "entry.txt"
+FILE_MODE = 0o644
 
 
-def count_characters(line):
-    """Return how many characters the entry holds (111 for this entry)."""
-    return len(line)
+def main():
+    """Validate the band line, then write it to the graded file."""
+    verdict, length = inspect(BAND_LINE)
+    if verdict is not None:
+        raise SystemExit(f"entry rejected: {verdict}")
+    store(BAND_LINE, length)
 
 
-def fail(message):
-    """Abort the run with a clear reason instead of shipping bad output."""
-    raise SystemExit(f"entry rejected: {message}")
+def inspect(text):
+    """Return (problem, length): problem is None when the line passes.
+
+    The gate is one line, 1-200 characters, with something in it. A
+    blank line, a hidden line break, or a length outside the window
+    all come back as a plain-English reason instead of a crash.
+    """
+    if not text.strip():
+        return "band line is empty", 0
+    for mark in ("\n", "\r"):
+        if mark in text:
+            return "band line must fit on one line", 0
+    length = len(text)
+    if length < MIN_CHARS or length > MAX_CHARS:
+        return (
+            f"band line is {length} characters, "
+            f"allowed range is {MIN_CHARS}-{MAX_CHARS}"
+        ), length
+    return None, length
 
 
-def check_not_empty(line):
-    """The entry must say something; a blank line is not an entry."""
-    if not line.strip():
-        fail("line is blank")
-
-
-def check_single_line(line):
-    """A one-line entry cannot contain a line break of any kind."""
-    if "\n" in line or "\r" in line:
-        fail("line must be a single line")
-
-
-def check_length(line, low, high):
-    """The entry must sit inside the competition's character gate."""
-    size = count_characters(line)
-    if size < low or size > high:
-        fail(f"line is {size} characters, outside the {low}-{high} gate")
-    return size
-
-
-def validate_line(line, low=FLOOR, high=CEILING):
-    """Run every gate check and return the verified character count."""
-    check_not_empty(line)
-    check_single_line(line)
-    return check_length(line, low, high)
-
-
-def resolve_output_path():
-    """Work out the full path of the file the grader will read."""
-    directory = os.environ.get(OUTPUT_ENV_VAR, DEFAULT_OUTPUT_DIR)
-    os.makedirs(directory, exist_ok=True)
-    return os.path.join(directory, OUTPUT_FILENAME)
-
-
-def emit(line, size):
-    """Write the entry out verbatim, then echo it for the run log."""
-    destination = resolve_output_path()
-    # The grader opens this file as a different user, so the file has
-    # to be world-readable; without that it fails as "not readable".
-    with open(destination, "w", encoding="utf-8", newline="") as handle:
-        handle.write(line)
-    os.chmod(destination, OUTPUT_MODE)
-    print(line)
-    print(f"({size} characters)")
-
-
-def run():
-    """Validate the entry, then emit it. Nothing is written unchecked."""
-    size = validate_line(LINE)
-    emit(LINE, size)
+def store(text, length):
+    """Write the line verbatim and echo it for the run log."""
+    folder = os.environ.get(DIR_ENV, DIR_FALLBACK)
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, FILE_NAME)
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        handle.write(text)
+    # The grader reads this file as another user, so it must be
+    # world-readable; a private file would fail as "not readable".
+    os.chmod(path, FILE_MODE)
+    print(text)
+    print(f"({length} characters)")
 
 
 if __name__ == "__main__":
-    run()
+    main()
